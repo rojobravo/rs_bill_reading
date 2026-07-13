@@ -1,0 +1,2 @@
+source_file,invoice_number,invoice_date,due_date,vendor_name,subtotal,tax_amount,total_amount,pages,tables_found
+sample_invoice.pdf,INV-2024-0042,15/01/2024,15/02/2024,ACME Solutions Ltd.,"3,500.00",805.00,"4,305.00",1,1

@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rs-bill-reading"
+version = "0.1.0"
+description = "PDF invoice data extraction — standard and AI-powered approaches"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    # --- Standard PDF extraction ---
+    "pypdf>=4.3",
+    "pdfplumber>=0.11",
+    # --- AI / LangChain extraction ---
+    "langchain>=0.3",
+    "langchain-openai>=0.2",
+    "langchain-core>=0.3",
+    "pydantic>=2.7",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2",
+    "pytest-cov>=5.0",
+    "python-dotenv>=1.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short"
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
