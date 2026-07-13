@@ -25,6 +25,8 @@ class InvoiceData:
     invoice_date: str | None = None
     due_date: str | None = None
     vendor_name: str | None = None
+    vendor_rut: str | None = None
+    customer_name: str | None = None
     total_amount: str | None = None
     tax_amount: str | None = None
     subtotal: str | None = None
@@ -44,18 +46,32 @@ class StandardInvoiceExtractor:
         print(data.invoice_number)
     """
 
-    # Simple heuristic patterns — adjust per your invoice format
+    # Heuristic patterns — each pattern may have multiple capture groups;
+    # _apply_heuristics will use the first non-None group.
     _PATTERNS: dict[str, str] = {
-        "invoice_number": r"(?i)invoice\s*(?:no\.?|number|#)[:\s]*([A-Z0-9\-\/]+)",
-        "invoice_date": r"(?i)(?:invoice\s+date|date\s+of\s+invoice)[:\s]*([\d]{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})",
-        "due_date": r"(?i)(?:due\s+date|payment\s+due)[:\s]*([\d]{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})",
-        # Require a colon after bare "total" to avoid matching table column headers
-        "total_amount": r"(?i)(?:total\s+(?:amount\s+)?due|amount\s+due|grand\s+total|(?<![a-z])total\s*:)[:\s]*\$?([\d,]+\.?\d*)",
-        # Allow optional rate annotation, e.g. "VAT (23%):"
-        "tax_amount": r"(?i)(?:tax|vat|gst)(?:\s*\([^)]+\))?\s*:\s*\$?([\d,]+\.?\d*)",
-        "subtotal": r"(?i)(?:subtotal|sub-total|sub\s+total)\s*:\s*\$?([\d,]+\.?\d*)",
-        # First line that looks like a company name (ends with a legal suffix)
-        "vendor_name": r"(?m)^([A-Z][A-Za-z0-9 &\.,]+(?:Ltd\.?|LLC|Inc\.?|Corp\.?|GmbH|Solutions|Group|Services|Co\.?))",
+        # English: "Invoice No. XYZ" / "Invoice #XYZ"
+        # Spanish: "Nº 5.657.289"
+        "invoice_number": r"(?i)(?:invoice\s*(?:no\.?|number|#)[:\s]*([A-Z0-9\-\/]+)|N[°º]\s*([\d\.,]+))",
+        # English: DD/MM/YYYY  |  Spanish: "DD de mes de YYYY"
+        "invoice_date": r"(?i)(?:invoice\s+date|date\s+of\s+invoice|fecha\s+emisi[oó]n)\s*:?\s*([\d]{1,2}[\/\-\.][\d]{1,2}[\/\-\.][\d]{2,4}|[\d]{1,2}\s+de\s+\w+\s+de\s+\d{4})",
+        # English: "Due Date:" / "Payment Due:"  |  Spanish: "FECHA VTO.:" (ISO YYYY-MM-DD)
+        "due_date": r"(?i)(?:due\s+date|payment\s+due|fecha\s+vto\.?)[:\s]*([\d]{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}|\d{4}-\d{2}-\d{2})",
+        # English: "Total Due:" / "Grand Total:"  |  Spanish: "Monto Total $"
+        # Anchored to start of line so table headers like "... Total" are skipped
+        "total_amount": r"(?mi)^\s*(?:total\s+(?:amount\s+)?due|amount\s+due|grand\s+total|monto\s+total|(?<![a-z])total\s*:)[:\s]*[$€£]?\s*([\d\.,]+)",
+        # English: "Tax/VAT/GST (rate):"  |  Spanish: "I.V.A. (19%)"
+        # Anchored to start of line
+        "tax_amount": r"(?mi)^\s*(?:i\.v\.a\.|tax|vat|gst)(?:\s*\([^)]+\))?\s*[:\s]*[$€£]?\s*([\d\.,]+)",
+        # English: "Subtotal:"  |  Spanish: "Monto Neto $"
+        # "Monto Neto" is listed first so it takes priority over "Sub-Total" table labels
+        # Anchored to start of line to avoid matching "REFERENCIAS Sub-Total $ 0"
+        "subtotal": r"(?mi)^\s*(?:monto\s+neto|subtotal|sub-total|sub\s+total)\s*[:\s]*[$€£]?\s*([\d\.,]+)",
+        # Vendor name = first line of the invoice (true for both Chilean and English formats)
+        "vendor_name": r"^([^\n]+)",
+        # Chilean RUT (tax ID), e.g. "R.U.T.: 77965620-9"
+        "vendor_rut": r"R\.U\.T\.\s*:\s*([\d\.\-]+)",
+        # Customer name after "SEÑOR(ES) :" label, stops before "RUT :" or newline
+        "customer_name": r"(?i)se[ñn]or\s*(?:es|\([^)]*\))?\s*:\s*([A-ZÁÉÍÓÚÑÜ][A-ZÁÉÍÓÚÑÜa-záéíóúñü0-9 \.,]+?)(?:\s+RUT\s*:|\s*\n)",
     }
 
     def __init__(self, pdf_path: str | Path) -> None:
@@ -120,4 +136,7 @@ class StandardInvoiceExtractor:
         for field_name, pattern in self._PATTERNS.items():
             match = re.search(pattern, data.raw_text)
             if match:
-                setattr(data, field_name, match.group(1).strip())
+                # First non-None group supports patterns with multiple alternatives
+                value = next((g for g in match.groups() if g is not None), None)
+                if value:
+                    setattr(data, field_name, value.strip())
