@@ -8,4 +8,5 @@ build/
 .pytest_cache/
 .ruff_cache/
 *.pdf
+!examples/*.pdf
 !samples/.gitkeep
